@@ -19,6 +19,13 @@ def query(sql, params=(), fetch=True):
     finally:
         conn.close()
 
+# SVG Book Cover Generator (Offline 100%, không lo vỡ ảnh)
+DEFAULT_COVERS = [
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='400' viewBox='0 0 300 400'><rect width='300' height='400' fill='%231e293b'/><rect x='20' y='20' width='260' height='360' rx='10' fill='%230f172a' stroke='%2338bdf8' stroke-width='3'/><text x='150' y='180' font-family='sans-serif' font-size='60' text-anchor='middle'>📘</text><text x='150' y='240' font-family='sans-serif' font-size='18' font-weight='bold' fill='%2338bdf8' text-anchor='middle'>KHO SÁCH</text><text x='150' y='270' font-family='sans-serif' font-size='12' fill='%2394a3b8' text-anchor='middle'>THƯ VIỆN SỐ</text></svg>",
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='400' viewBox='0 0 300 400'><rect width='300' height='400' fill='%231e293b'/><rect x='20' y='20' width='260' height='360' rx='10' fill='%230f172a' stroke='%2334d399' stroke-width='3'/><text x='150' y='180' font-family='sans-serif' font-size='60' text-anchor='middle'>📗</text><text x='150' y='240' font-family='sans-serif' font-size='18' font-weight='bold' fill='%2334d399' text-anchor='middle'>TÀI LIỆU</text><text x='150' y='270' font-family='sans-serif' font-size='12' fill='%2394a3b8' text-anchor='middle'>CHUYÊN NGÀNH</text></svg>",
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='400' viewBox='0 0 300 400'><rect width='300' height='400' fill='%231e293b'/><rect x='20' y='20' width='260' height='360' rx='10' fill='%230f172a' stroke='%23c084fc' stroke-width='3'/><text x='150' y='180' font-family='sans-serif' font-size='60' text-anchor='middle'>📙</text><text x='150' y='240' font-family='sans-serif' font-size='18' font-weight='bold' fill='%23c084fc' text-anchor='middle'>GIÁO TRÌNH</text><text x='150' y='270' font-family='sans-serif' font-size='12' fill='%2394a3b8' text-anchor='middle'>ĐẠI HỌC</text></svg>"
+]
+
 PAGE = """<!doctype html>
 <html lang="vi">
 <head>
@@ -82,17 +89,18 @@ PAGE = """<!doctype html>
         .btn-success { background: linear-gradient(135deg, #059669 0%, #047857 100%); }
 
         /* Book Grid Layout */
-        .books-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 24px; margin-top: 10px; }
-        .book-card { background: #0f172a; border: 1px solid var(--border-color); border-radius: 14px; overflow: hidden; transition: all 0.25s; display: flex; flex-direction: column; }
-        .book-card:hover { transform: translateY(-5px); border-color: var(--primary); box-shadow: 0 12px 24px -10px rgba(56, 189, 248, 0.3); }
-        .book-cover { width: 100%; height: 260px; object-fit: cover; background: #1e293b; border-bottom: 1px solid var(--border-color); }
-        .book-details { padding: 16px; display: flex; flex-direction: column; flex-grow: 1; justify-content: space-between; }
-        .book-title { font-weight: 700; font-size: 15px; color: #ffffff; margin-bottom: 4px; line-height: 1.3; }
-        .book-author { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
+        .books-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 24px; margin-top: 10px; }
+        .book-card { background: #0f172a; border: 1px solid var(--border-color); border-radius: 16px; overflow: hidden; transition: all 0.25s; display: flex; flex-direction: column; }
+        .book-card:hover { transform: translateY(-6px); border-color: var(--primary); box-shadow: 0 12px 28px -8px rgba(56, 189, 248, 0.35); }
+        .book-cover-wrapper { position: relative; width: 100%; height: 260px; overflow: hidden; background: #1e293b; border-bottom: 1px solid var(--border-color); }
+        .book-cover { width: 100%; height: 100%; object-fit: cover; }
+        .book-details { padding: 18px; display: flex; flex-direction: column; flex-grow: 1; justify-content: space-between; }
+        .book-title { font-weight: 700; font-size: 16px; color: #ffffff; margin-bottom: 6px; line-height: 1.3; }
+        .book-author { font-size: 13px; color: var(--text-muted); margin-bottom: 14px; }
         .book-meta { display: flex; justify-content: space-between; align-items: center; margin-top: auto; }
         
         /* Badges */
-        .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+        .badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
         .badge-slate { background: rgba(148, 163, 184, 0.1); color: var(--text-muted); border: 1px solid rgba(148, 163, 184, 0.2); }
         .badge-green { background: rgba(52, 211, 153, 0.1); color: var(--accent-green); border: 1px solid rgba(52, 211, 153, 0.2); }
 
@@ -141,16 +149,18 @@ def books():
     active_loans = query("SELECT COUNT(*) FROM loans WHERE returned_at IS NULL")[0][0]
 
     rows = query("""SELECT b.id, b.title, b.author, b.copies,
-        b.copies - COUNT(l.id) FILTER (WHERE l.returned_at IS NULL) AS available,
-        COALESCE(b.cover_url, 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=400')
+        b.copies - COUNT(l.id) FILTER (WHERE l.returned_at IS NULL) AS available
         FROM books b LEFT JOIN loans l ON l.book_id=b.id
         GROUP BY b.id ORDER BY b.id""")
     
     cards = []
-    for r in rows:
+    for idx, r in enumerate(rows):
+        cover_svg = DEFAULT_COVERS[idx % len(DEFAULT_COVERS)]
         cards.append(f"""
         <div class="book-card">
-            <img src="{escape(r[5])}" class="book-cover" alt="Cover" onerror="this.src='https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=400'">
+            <div class="book-cover-wrapper">
+                <img src="{cover_svg}" class="book-cover" alt="Cover">
+            </div>
             <div class="book-details">
                 <div>
                     <div class="book-title">{escape(r[1])}</div>
@@ -187,20 +197,16 @@ def books():
     {stats_html}
     <div class="card">
         <div class="card-header">
-            <div class="card-title"><span>➕</span> Khai Báo Sách Mới Kèm Ảnh Bìa</div>
+            <div class="card-title"><span>➕</span> Khai Báo Sách Mới Vào Hệ Thống</div>
         </div>
-        <form method="post" action="/books" class="form-grid">
+        <form method="post" action="/books" class="form-grid" style="grid-template-columns: 2fr 2fr 1fr 140px;">
             <div class="form-group">
                 <label>Tên Tiêu Đề Sách</label>
-                <input name="title" placeholder="Ví dụ: Thiết kế Hệ thống..." required>
+                <input name="title" placeholder="Ví dụ: Lập trình Python Advanced..." required>
             </div>
             <div class="form-group">
                 <label>Tác Giả</label>
-                <input name="author" placeholder="Ví dụ: Martin Kleppmann..." required>
-            </div>
-            <div class="form-group">
-                <label>Link Ảnh Bìa (URL)</label>
-                <input name="cover_url" placeholder="https://..." value="https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=400">
+                <input name="author" placeholder="Ví dụ: Nguyễn Văn A..." required>
             </div>
             <div class="form-group">
                 <label>Số Lượng Kho</label>
@@ -221,9 +227,8 @@ def books():
 
 @app.route("/books", methods=["POST"])
 def add_book():
-    cover = request.form.get("cover_url", "").strip() or "https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=400"
-    query("INSERT INTO books (title, author, copies, cover_url) VALUES (%s,%s,%s,%s)",
-          (request.form["title"], request.form["author"], int(request.form["copies"]), cover), fetch=False)
+    query("INSERT INTO books (title, author, copies) VALUES (%s,%s,%s)",
+          (request.form["title"], request.form["author"], int(request.form["copies"])), fetch=False)
     return redirect("/")
 
 @app.route("/readers", methods=["GET", "POST"])
